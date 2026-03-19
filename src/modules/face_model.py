@@ -365,6 +365,7 @@ class FaceModel(nn.Module):
         """
         vertex_embeddings, global_context, seq_context = self._prepare_context(context)
         num_samples = vertex_embeddings.shape[0]
+        device = vertex_embeddings.device
 
         def _loop_body(i: int, samples: torch.Tensor, cache: Dict) -> Tuple[int, torch.Tensor]:
             """While-loop body for autoregression calculation.
@@ -408,7 +409,7 @@ class FaceModel(nn.Module):
             )  # Checks if stopping token is present in every row
             return torch.any(reduced_matrix)
 
-        samples = torch.zeros([num_samples, 0], dtype=torch.int32).cuda() #yujia:cuda()
+        samples = torch.zeros([num_samples, 0], dtype=torch.int32).to(device) #yujia:cuda()
         cache = self.decoder.initialize_cache(num_samples)
         max_sample_length = max_sample_length or self.max_seq_length
         j = 0
@@ -421,7 +422,7 @@ class FaceModel(nn.Module):
         )  # Tells us which samples are complete and which aren't
         sample_length = samples.shape[-1]  # Number of sampled faces
         max_one_ind, _ = torch.max(
-            torch.arange(sample_length)[None].cuda() * (samples == 1).to(torch.int32),  #yujia:cuda()
+            torch.arange(sample_length)[None].to(device) * (samples == 1).to(torch.int32),  #yujia:cuda()
             dim=-1,
         )  # Checking for new face tokens
         max_one_ind = max_one_ind.to(torch.int32)
@@ -430,13 +431,13 @@ class FaceModel(nn.Module):
         )  # Figuring out where the zeros are in every row
         num_face_indices = torch.where(complete_samples, zero_inds, max_one_ind) + 1  # How many vertices in each face
 
-        faces_mask = (torch.arange(sample_length)[None].cuda() < num_face_indices[:, None] - 1).to(  #yujia:cuda()
+        faces_mask = (torch.arange(sample_length)[None].to(device) < num_face_indices[:, None] - 1).to(  #yujia:cuda()
             torch.int32
         )  # Faces mask turns the last true to false in each row
 
         samples = samples * faces_mask
 
-        faces_mask = (torch.arange(sample_length)[None].cuda() < num_face_indices[:, None]).to(torch.int32)  #yujia:cuda()
+        faces_mask = (torch.arange(sample_length)[None].to(device) < num_face_indices[:, None]).to(torch.int32)  #yujia:cuda()
 
         pad_size = max_sample_length - sample_length
         samples = F.pad(samples, [0, pad_size, 0, 0])
@@ -489,7 +490,7 @@ class FaceModel(nn.Module):
         """
         vertex_embeddings, global_context, seq_context = self._prepare_context(context)
         num_samples = vertex_embeddings.shape[0]
-
+        device = vertex_embeddings.device
         def _loop_body(i: int, samples: torch.Tensor, cache: Dict) -> Tuple[int, torch.Tensor]:
             """While-loop body for autoregression calculation.
 
@@ -567,7 +568,7 @@ class FaceModel(nn.Module):
             )  # Checks if stopping token is present in every row
             return torch.any(reduced_matrix)
 
-        samples = torch.zeros([num_samples, 0], dtype=torch.int32).cuda() #yujia:cuda()
+        samples = torch.zeros([num_samples, 0], dtype=torch.int32).to(device) #yujia:cuda()
         cache = self.decoder.initialize_cache(num_samples)
         max_sample_length = max_sample_length or self.max_seq_length
         j = 0
@@ -580,7 +581,7 @@ class FaceModel(nn.Module):
         )  # Tells us which samples are complete and which aren't
         sample_length = samples.shape[-1]  # Number of sampled faces
         max_one_ind, _ = torch.max(
-            torch.arange(sample_length)[None].cuda() * (samples == 1).to(torch.int32),  #yujia:cuda()
+            torch.arange(sample_length)[None].to(device) * (samples == 1).to(torch.int32),  #yujia:cuda()
             dim=-1,
         )  # Checking for new face tokens
         max_one_ind = max_one_ind.to(torch.int32)
@@ -589,13 +590,13 @@ class FaceModel(nn.Module):
         )  # Figuring out where the zeros are in every row
         num_face_indices = torch.where(complete_samples, zero_inds, max_one_ind) + 1  # How many vertices in each face
 
-        faces_mask = (torch.arange(sample_length)[None].cuda() < num_face_indices[:, None] - 1).to(  #yujia:cuda()
+        faces_mask = (torch.arange(sample_length)[None].to(device) < num_face_indices[:, None] - 1).to(  #yujia:cuda()
             torch.int32
         )  # Faces mask turns the last true to false in each row
 
         samples = samples * faces_mask
 
-        faces_mask = (torch.arange(sample_length)[None].cuda() < num_face_indices[:, None]).to(torch.int32)  #yujia:cuda()
+        faces_mask = (torch.arange(sample_length)[None].to(device) < num_face_indices[:, None]).to(torch.int32)  #yujia:cuda()
 
         pad_size = max_sample_length - sample_length
         samples = F.pad(samples, [0, pad_size, 0, 0])

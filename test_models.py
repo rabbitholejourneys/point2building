@@ -11,7 +11,7 @@ from src.modules.data_modules import load_dataloaders
 from train_vertex_model import load_v_models
 from train_face_model import load_f_models
 
-def process_data(predv):
+def process_data(predv, device):
     pred_vertices = torch.from_numpy(predv['vertices'][:predv['num_vertices']]).float().to(device)
     pred_vertices = data_utils.quantize_verts(pred_vertices)
     pred_vertices, inv = torch.unique(pred_vertices, dim=0, return_inverse=True)
@@ -110,30 +110,32 @@ def are_missing_floor_faces(vs, fs, vs_floor_inds):
 
 
 if __name__ == '__main__':
-    CITY = 'Zurich'
+    CITY = 'Zuerich' #'VAIHINGEN' #
     device = 'cuda'
     model_base_dir = './saved_model'
-    test_data_dir = 'datasets/{}/testset'.format(CITY)
+    test_data_dir = "/home/jovyan/repos/review/data/Zuerich/" #"/home/jovyan/repos/review/data/Vaihingen/out_old/test" #'datasets/{}/testset'.format(CITY)
 
-    with open(os.path.join('datasets', CITY, 'testset/info.json')) as f:
-        data_info = json.load(f)
+    
 
-    checkpoint_v_dir = os.path.join(model_base_dir, CITY, 'vertex_model')
+    checkpoint_v_dir = os.path.join(model_base_dir, 'vertex_model')
     checkpoint_v_pth = os.path.join(checkpoint_v_dir, 'checkpoint_v.pth')
     checkpoint_v = torch.load(checkpoint_v_pth)
     pc_vertex_model = load_v_models(device=device)
     pc_vertex_model = pc_vertex_model.to(device)
     pc_vertex_model.load_state_dict(checkpoint_v['state_dict'])
 
-    checkpoint_f_dir = os.path.join(model_base_dir, CITY, 'face_model')
+    checkpoint_f_dir = os.path.join(model_base_dir, 'face_model')
     checkpoint_f_pth = os.path.join(checkpoint_f_dir, 'checkpoint_f.pth')
     checkpoint_f = torch.load(checkpoint_f_pth)
     face_model = load_f_models(device=device)
     face_model = face_model.to(device)
     face_model.load_state_dict(checkpoint_f['state_dict'])
 
-    all_pointcloud_files = sorted(glob(os.path.join(test_data_dir, 'pointclouds', '*.xyz')))
-    pc_dataloader = load_dataloaders(batch_size=1, preprocess=True, data_split='test', CITY=CITY, stage=1)
+    all_pointcloud_files = sorted(glob(os.path.join(test_data_dir, 'xyz_n', '*.xyz')))
+    pc_dataloader, pc_info_file = load_dataloaders(test_data_dir, all_pointcloud_files, batch_size=1, preprocess=True, data_split='test', CITY=CITY, stage=1)
+
+    with open(pc_info_file) as f:
+        data_info = json.load(f)
 
     for j, (pc_vertex_batch) in enumerate(tqdm(pc_dataloader)):
         for k in pc_vertex_batch:
@@ -147,7 +149,7 @@ if __name__ == '__main__':
                 run_v_id += 1
                 continue
             run_f_id = 0
-            face_batch = process_data(predv)
+            face_batch = process_data(predv, device)
             while run_f_id < 10:
                 # print('run {} iterations'.format(run_v_id*10+run_f_id))
                 predf = sample_faces(face_model, face_batch, return_mesh=True)

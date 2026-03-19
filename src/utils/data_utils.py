@@ -260,7 +260,34 @@ def face_to_cycles(faces: List[int]) -> List[int]:
         g.add_edge(faces[v], faces[v + 1])
     g.add_edge(faces[-1], faces[0])
     return list(nx.cycle_basis(g))
+    
+def quantize_process_verts(
+    vertices: torch.Tensor,
+    quantization_bits: int = 8,
+) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    """Quantize vertices, remove resulting duplicates and reindex faces
 
+    Args:
+        vertices: torch tensor of shape (num_vertices, 3)
+        faces: Unflattened faces
+        tris: List of triangles
+        quantization_bits: number of quantization bits
+
+    Returns:
+        vertices: processed vertices
+        faces: processed faces
+        triangles: list of triangles in 3D object
+    """
+    vertices = quantize_verts(vertices, quantization_bits)
+    vertices, inv = torch.unique(vertices, dim=0, return_inverse=True)
+
+    # Sort vertices by z then y then x
+    sort_inds = torch_lexsort(vertices.T)
+    vertices = vertices[sort_inds]
+
+    
+    return vertices
+    
 def quantize_process_mesh(
     vertices: torch.Tensor,
     faces: List[List[int]],

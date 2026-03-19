@@ -5,6 +5,7 @@ from typing import List, Dict, Optional
 import json
 from tqdm import tqdm
 from glob import glob
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -15,7 +16,7 @@ import MinkowskiEngine as ME
 
 
 class PVDataset(Dataset):
-    def __init__(self, all_pointcloud_files: List[str], data_info_file: str, preprocess:bool=False, rotatexy=True) -> None:
+    def __init__(self, all_pointcloud_files: List[str], data_info_file: str, preprocess:bool=False, rotatexy=True, results_dir: str = None) -> None:
         """Initializes PointCloud Dataset
 
         Args:
@@ -31,9 +32,14 @@ class PVDataset(Dataset):
             selected_file_idx = []
             for idx in tqdm(range(len(all_pointcloud_files))):
                 pts_file = all_pointcloud_files[idx]
-                mesh_file = pts_file.replace('/pointclouds/', '/meshes/').replace('.xyz', '.obj')
-                if data_utils.filter_mesh_obj_by_info(self.data_info, mesh_file):
+                stem = Path(pts_file).stem
+                mesh_file = os.path.join(results_dir, stem+'.obj') #pts_file.replace('/xyz/', '/meshes/').replace('.xyz', '.obj')
+                #if data_utils.filter_mesh_obj_by_info(self.data_info, mesh_file):
+                if not os.path.isfile(mesh_file): 
                     selected_file_idx.append(idx)
+                #    print(mesh_file, "does NOT exist")
+                #else: 
+                #    print(mesh_file, "exists")
             self.pointclouds = [all_pointcloud_files[idx] for idx in selected_file_idx]
             print('======num files: {}========'.format(len(self.pointclouds)))
 
@@ -50,17 +56,17 @@ class PVDataset(Dataset):
             mesh_dict: Dictionary containing vertices, faces of .obj file and image tensor
         """
         pc_file = self.pointclouds[idx]
-        mesh_file = pc_file.replace('/pointclouds/', '/meshes/').replace('.xyz', '.obj')
+        mesh_file = pc_file.replace('/xyz_n/', '/meshes/').replace('.xyz', '.obj')
 
-        vertices, faces = data_utils.load_obj(mesh_file)
+        #vertices, faces = data_utils.load_obj(mesh_file)
         pts = data_utils.load_xyz(pc_file)
 
-        minz = -np.max(vertices[:,2])
+        minz = -np.max(pts[:,2])
         added_pts = pts.copy()
         added_pts[:,2] = minz
         pts = np.vstack((pts, added_pts))
 
-        vertices = torch.from_numpy(vertices).float()
+        #vertices = torch.from_numpy(vertices).float()
         pts = torch.from_numpy(pts).float()
 
         if self.rotatexy:
@@ -68,22 +74,24 @@ class PVDataset(Dataset):
             cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
             rotation_2d = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
 
-            vertices = data_utils.rotate_points(vertices, rotation_2d)
+            #vertices = data_utils.rotate_points(vertices, rotation_2d)
             pts = data_utils.rotate_points(pts, rotation_2d)
 
-            vertices = torch.from_numpy(vertices).float()
+            #vertices = torch.from_numpy(vertices).float()
 
-        vertices, vertices_scale = data_utils.normalize_vertices_scale(vertices, return_scale=True)
+        vertices, vertices_scale = data_utils.normalize_vertices_scale(pts, return_scale=True)
+        #vertices = vertices[:3]
         pts = pts / vertices_scale
 
         pts = pts.float()
         pts = torch.clamp(pts, -0.5, 0.5)
         vertices = torch.clamp(vertices, -0.5, 0.5)
 
-        vertices, faces, _ = data_utils.quantize_process_mesh(vertices, faces)
+        #vertices, faces, _ = data_utils.quantize_process_mesh(vertices, faces)
+        vertices = data_utils.quantize_process_verts(vertices) 
         vertices = vertices.to(torch.int32)
 
-        mesh_dict = {"vertices": vertices, "pointcloud": pts, "filename": pc_file}
+        mesh_dict = { "vertices": vertices, "pointcloud": pts, "filename": pc_file} #
 
         return mesh_dict
     
@@ -165,6 +173,7 @@ class PolygenDataModule(nn.Module):
         all_pointcloud_files: Optional[List[str]] = None,
         all_mesh_files: Optional[List[str]] = None,
         data_info_file: str = None,
+        results_dir: str = None,
     ) -> None:
         """
         Args:
@@ -189,7 +198,7 @@ class PolygenDataModule(nn.Module):
         self.shuffle_vertices = shuffle_vertices
 
         if collate_method == CollateMethod.VERTICES:
-            self.pv_dataset = PVDataset(all_pointcloud_files=all_pointcloud_files, data_info_file=data_info_file, preprocess=apply_preprocess, rotatexy=rotatexy)
+            self.pv_dataset = PVDataset(all_pointcloud_files=all_pointcloud_files, data_info_file=data_info_file, preprocess=apply_preprocess, rotatexy=rotatexy, results_dir = results_dir)
             self.collate_fn = self.collate_vertex_model_batch
         elif collate_method == CollateMethod.FACES:
             self.vf_dataset = VFDataset(all_mesh_files=all_mesh_files, data_info_file=data_info_file, preprocess=apply_preprocess, rotatexy=rotatexy)
@@ -340,7 +349,7 @@ class PolygenDataModule(nn.Module):
             collate_fn=self.collate_fn,
             num_workers=num_workers,
             persistent_workers=True,
-        )    
+        ), self.pv_dataset.pointclouds   
     
     def train_vf_dataloader(self, num_workers=8) -> DataLoader:
         """
@@ -356,13 +365,13 @@ class PolygenDataModule(nn.Module):
             persistent_workers=True,
         )
 
-def load_dataloaders(batch_size=4, preprocess=False, data_split='train', CITY='Zurich', stage=1):
-    data_dir = os.path.join('datasets', CITY, '{}set'.format(data_split))
+def load_dataloaders(data_dir, all_pointcloud_files, batch_size=4, preprocess=False, data_split='train', CITY='Zurich', stage=1, results_dir=None):
+    #data_dir = os.path.join('datasets', CITY, '{}set'.format(data_split))
     rotatexy = data_split == 'train'
     data_info_file = os.path.join(data_dir, 'info.json')
 
     if stage == 1:
-        all_pointcloud_files = glob(os.path.join(data_dir, 'pointclouds/*.xyz'))
+        #all_pointcloud_files = glob(os.path.join(data_dir, 'pointclouds/*.xyz'))
         pv_data_module = PolygenDataModule(
                                         collate_method = CollateMethod.VERTICES,
                                         batch_size = batch_size,
@@ -371,13 +380,14 @@ def load_dataloaders(batch_size=4, preprocess=False, data_split='train', CITY='Z
                                         rotatexy=rotatexy,
                                         all_pointcloud_files=all_pointcloud_files,
                                         data_info_file=data_info_file,
+                                        results_dir=results_dir,
         )
         if data_split == 'train':
-            pv_dataloader = pv_data_module.train_pv_dataloader(num_workers=8)
+            pv_dataloader, filtered_pointcloud_files = pv_data_module.train_pv_dataloader(num_workers=8)
         elif data_split == 'test':
-            pv_dataloader = pv_data_module.test_pv_dataloader(num_workers=8)
+            pv_dataloader, filtered_pointcloud_files = pv_data_module.test_pv_dataloader(num_workers=8)
 
-        return pv_dataloader
+        return pv_dataloader, data_info_file, filtered_pointcloud_files
 
     elif stage == 2:
         all_mesh_files = glob(os.path.join(data_dir, 'meshes/*.obj'))

@@ -62,6 +62,7 @@ class PolygenDecoderLayer(nn.TransformerDecoderLayer):
         tgt_key_padding_mask: Optional[torch.Tensor] = None,
         memory_key_padding_mask: Optional[torch.Tensor] = None,
         cache: Optional[Dict[str, torch.Tensor]] = None,
+        **kwargs
     ) -> torch.Tensor:
         """Forward method of Decoder Layer
 
